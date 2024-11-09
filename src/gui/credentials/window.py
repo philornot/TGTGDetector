@@ -3,10 +3,10 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ...utils import TGTGLogger
-from ..styles.theme import TGTGStyles
 from .auth_handler import AuthenticationHandler
 from .components import EmailFrame, CodeFrame, ButtonFrame
+from ..styles.theme import TGTGStyles
+from ...utils import TGTGLogger
 
 
 class CredentialsWindow:
@@ -49,9 +49,9 @@ class CredentialsWindow:
 
             self.logger.info("=== Inicjalizacja okna credentials zakończona pomyślnie ===")
 
-        except Exception as e:
-            self.logger.error(f"!!! Krytyczny błąd podczas inicjalizacji okna: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
+        except Exception as ex:
+            self.logger.error(f"!!! Krytyczny błąd podczas inicjalizacji okna: {ex}", exc_info=True)
+            self.logger.error(f"Typ błędu: {type(ex).__name__}")
             raise
 
     def _configure_window(self):
@@ -70,8 +70,9 @@ class CredentialsWindow:
             self.logger.debug("Ustawiono grab_set() dla okna")
 
             # Geometria okna
-            self.root.geometry("400x300")
-            self.logger.debug("Ustawiono geometrię okna: 400x300")
+            size = '400x400'
+            self.root.geometry(size)
+            self.logger.debug(f'Ustawiono geometrię okna: {size}')
 
             # Protokół zamknięcia
             self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -84,8 +85,8 @@ class CredentialsWindow:
 
             self.logger.debug("=== Konfiguracja okna zakończona pomyślnie ===")
 
-        except Exception as e:
-            self.logger.error(f"Błąd podczas konfiguracji okna: {e}", exc_info=True)
+        except Exception as ex:
+            self.logger.error(f"Błąd podczas konfiguracji okna: {ex}", exc_info=True)
             raise
 
     def _initialize_ui(self):
@@ -118,7 +119,7 @@ class CredentialsWindow:
 
             # Podpięcie akcji
             self.logger.debug("Podpinanie akcji do przycisków...")
-            self.button_frame.bind_auth_action(self._start_auth_process)
+            self.button_frame.bind_auth_action(self._handle_auth_button)
             self.button_frame.bind_close_action(self._on_closing)
             self.logger.debug("Akcje zostały podpięte")
 
@@ -156,7 +157,11 @@ class CredentialsWindow:
             instructions_label = ttk.Label(
                 parent,
                 text="Podaj adres email używany w aplikacji Too Good To Go.\n"
-                     "Otrzymasz email z kodem weryfikacyjnym.",
+                     "Otrzymasz email z przyciskiem do logowania.\n\n"
+                     "UWAGA: Jeśli przycisk w emailu nie działa:\n"
+                     "1. Znajdź w emailu kod weryfikacyjny (6 cyfr)\n"
+                     "2. Wpisz go w pole poniżej (pojawi się po wpisaniu emaila)\n"
+                     "3. Kliknij 'Zaloguj się'",
                 style='Normal.TLabel',
                 wraplength=350
             )
@@ -246,6 +251,11 @@ class CredentialsWindow:
             self.logger.error(f"Błąd podczas zamykania okna: {e}", exc_info=True)
             raise
 
+    def _handle_auth_button(self):
+        """Handler przycisku autentykacji — nie async"""
+        self.logger.debug("Obsługa przycisku autentykacji")
+        asyncio.create_task(self._start_auth_process())
+
     async def _start_auth_process(self):
         """Rozpoczyna proces autentykacji"""
         self.logger.info("=== Rozpoczęcie procesu autentykacji ===")
@@ -257,13 +267,13 @@ class CredentialsWindow:
             self.logger.debug(f"Pobrano email: {email}")
             self.logger.debug(f"Pobrano kod o długości: {len(code) if code else 0}")
 
-            if not email and not code:
+            if not email:
                 self.logger.warning("Próba autentykacji bez podania emaila")
                 messagebox.showerror("Błąd", "Podaj adres email!")
                 return
 
             if not code:
-                # Pierwsze wywołanie - wysyłanie emaila
+                # Pierwsze wywołanie — wysyłanie emaila
                 self.logger.info(f"Rozpoczęcie wysyłania emaila dla: {email}")
                 self.status_var.set("Wysyłanie emaila z kodem... Sprawdź swoją skrzynkę!")
 
@@ -272,28 +282,39 @@ class CredentialsWindow:
                 self.logger.debug("Pokazano pole na kod weryfikacyjny")
 
                 # Zmień tekst przycisku
-                self.button_frame.set_auth_button_text("Zaloguj się")
-                self.logger.debug("Zmieniono tekst przycisku na 'Zaloguj się'")
+                self.button_frame.set_auth_button_text("Zaloguj się kodem")
+                self.logger.debug("Zmieniono tekst przycisku na 'Zaloguj się kodem'")
 
-                # Wysłanie emaila
-                await self.auth_handler.send_verification_email(email)
-                self.logger.info("Email został wysłany")
+                try:
+                    # Wysłanie emaila
+                    await self.auth_handler.send_verification_email(email)
+                    self.status_var.set("Email wysłany! Możesz użyć przycisku w emailu lub wpisać kod tutaj.")
+                    self.logger.info("Email został wysłany")
+                except Exception as e:
+                    self.logger.error(f"Błąd podczas wysyłania emaila: {e}")
+                    self.status_var.set(f"Błąd wysyłania emaila: {str(e)}")
+                    messagebox.showerror("Błąd", f"Błąd wysyłania emaila: {str(e)}")
 
             else:
-                # Drugie wywołanie - weryfikacja kodu
+                # Drugie wywołanie — weryfikacja kodu
                 self.logger.info("Rozpoczęcie weryfikacji kodu...")
                 self.status_var.set("Weryfikacja kodu...")
 
-                # Weryfikacja kodu
-                credentials = await self.auth_handler.verify_code(email, code)
-                self.logger.debug("Credentials zostały pomyślnie pobrane")
+                try:
+                    # Weryfikacja kodu i zapis credentials
+                    await self.auth_handler.verify_code(email, code)
+                    self.logger.debug("Credentials zostały pomyślnie pobrane i zapisane")
 
-                self.status_var.set("Logowanie zakończone sukcesem!")
-                self.logger.info("=== Proces autentykacji zakończony sukcesem ===")
+                    self.status_var.set("Logowanie zakończone sukcesem!")
+                    self.logger.info("=== Proces autentykacji zakończony sukcesem ===")
 
-                # Zamknij okno
-                messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
-                self._on_closing()
+                    # Zamknij okno
+                    messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
+                    self._on_closing()
+                except Exception as e:
+                    self.logger.error(f"Błąd podczas weryfikacji kodu: {e}")
+                    self.status_var.set(f"Błąd weryfikacji kodu: {str(e)}")
+                    messagebox.showerror("Błąd", f"Błąd weryfikacji kodu: {str(e)}")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas procesu autentykacji: {e}", exc_info=True)

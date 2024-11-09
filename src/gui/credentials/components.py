@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from typing import Optional, Callable
+from typing import Optional
 
 from ...utils import TGTGLogger
 
@@ -96,39 +96,52 @@ class ButtonFrame:
         self.logger = TGTGLogger("ButtonFrame").get_logger()
         self.logger.debug("Inicjalizacja komponentu ButtonFrame")
 
+        # Główny kontener
         self.frame = ttk.Frame(parent)
         self.frame.pack(fill=tk.X, pady=20)
+
+        # Osobny frame dla przycisków, aby były wycentrowane
+        self.buttons_container = ttk.Frame(self.frame)
+        self.buttons_container.pack(expand=True, fill=tk.X)
 
         self._create_widgets()
         self.logger.debug("Komponent ButtonFrame został zainicjalizowany")
 
-    def _create_widgets(self):
-        """Tworzy przyciski"""
-        self.logger.debug("Tworzenie przycisków")
-
-        self.auth_button = ttk.Button(
-            self.frame,
-            text="Wyślij kod weryfikacyjny"
-        )
-        self.auth_button.pack(side=tk.LEFT, padx=5)
-
-        self.close_button = ttk.Button(
-            self.frame,
-            text="Zamknij"
-        )
-        self.close_button.pack(side=tk.RIGHT, padx=5)
-
-        self.logger.debug("Przyciski zostały utworzone")
-
-    def bind_auth_action(self, command: Callable):
+    def bind_auth_action(self, command):
         """Przypisuje akcję do przycisku autentykacji"""
+        self.logger.debug(f"Bindowanie akcji autentykacji: {command}")
         self.auth_button.configure(command=command)
 
-    def bind_close_action(self, command: Callable):
+    def bind_close_action(self, command):
         """Przypisuje akcję do przycisku zamknięcia"""
+        self.logger.debug(f"Bindowanie akcji zamknięcia: {command}")
         self.close_button.configure(command=command)
 
     def set_auth_button_text(self, text: str):
         """Zmienia tekst na przycisku autentykacji"""
         self.logger.debug(f"Zmiana tekstu przycisku autentykacji na: {text}")
         self.auth_button.configure(text=text)
+
+    def _create_widgets(self):
+        """Tworzy przyciski"""
+        self.logger.debug("Tworzenie przycisków")
+
+        # Przycisk głównej akcji (szerszy)
+        self.auth_button = ttk.Button(
+            self.buttons_container,
+            text="Wyślij email weryfikacyjny",
+            width=30  # Stała szerokość
+        )
+        self.auth_button.pack(side=tk.LEFT, padx=(0, 5))
+        self.logger.debug("Utworzono przycisk akcji")
+
+        # Przycisk zamykania (węższy)
+        self.close_button = ttk.Button(
+            self.buttons_container,
+            text="Anuluj",
+            width=15  # Stała szerokość
+        )
+        self.close_button.pack(side=tk.RIGHT)
+        self.logger.debug("Utworzono przycisk zamykania")
+
+        self.logger.debug("Przyciski zostały utworzone")
