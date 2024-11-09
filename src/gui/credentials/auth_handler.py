@@ -16,38 +16,21 @@ class AuthenticationHandler:
 
         self.logger.debug(f"Inicjalizacja AuthenticationHandler. Ścieżka konfig: {self.settings.config_path}")
 
-    async def send_verification_email(self, email: str) -> bool:
+    async def start_login(self, email: str) -> Dict[str, Any]:
         """
-        Wysyła email z kodem weryfikacyjnym
-
-        Returns:
-            bool: True, jeśli wysłanie się powiodło
-        """
-        try:
-            self.logger.info(f"Wysyłanie emaila weryfikacyjnego do: {email}")
-            self.client = TgtgClient(email=email)
-            self.logger.info("Email weryfikacyjny został wysłany")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Błąd podczas wysyłania emaila: {e}")
-            raise
-
-    async def verify_code(self, email: str, code: str) -> Dict[str, Any]:
-        """
-        Weryfikuje kod i zapisuje credentials w konfiguracji
+        Rozpoczyna proces logowania — wysyła email z przyciskiem i czeka na jego kliknięcie
 
         Args:
             email: Adres email użytkownika
-            code: Kod weryfikacyjny z emaila
 
         Returns:
             Dict[str, Any]: Słownik z danymi uwierzytelniającymi
         """
         try:
-            self.logger.info(f"Rozpoczęcie weryfikacji kodu dla {email}...")
-            self.logger.debug(f"Otrzymany kod: {code}")
+            self.logger.info(f"Rozpoczęcie procesu logowania dla: {email}")
 
+            # Inicjalizacja klienta i wysłanie maila
+            self.client = TgtgClient(email=email)
             credentials = self.client.get_credentials()
 
             # Aktualizacja konfiguracji
@@ -66,5 +49,5 @@ class AuthenticationHandler:
             return credentials
 
         except Exception as e:
-            self.logger.error(f"Błąd podczas weryfikacji kodu lub zapisu credentials: {e}")
+            self.logger.error(f"Błąd podczas procesu logowania: {e}")
             raise

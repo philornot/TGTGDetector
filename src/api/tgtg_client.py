@@ -25,7 +25,13 @@ class TGTGApiClient:
         try:
             config = self.settings.config
 
+            # Jeśli już mamy klienta, nie logujemy się ponownie
+            if self.client is not None:
+                self.logger.info("Używam istniejącej sesji")
+                return
+
             if access_token and config.get('refresh_token') and config.get('user_id') and config.get('cookie'):
+                self.logger.debug("Próba logowania przy użyciu zapisanych credentials...")
                 self.client = TgtgClient(
                     access_token=config['access_token'],
                     refresh_token=config['refresh_token'],
@@ -34,6 +40,7 @@ class TGTGApiClient:
                 )
                 self.logger.info("Zalogowano przy użyciu zapisanych credentials")
             else:
+                self.logger.debug("Brak zapisanych credentials, inicjalizacja nowego klienta...")
                 self.client = TgtgClient(email=email)
                 credentials = self.client.get_credentials()
                 self.settings.update_credentials(credentials)

@@ -107,21 +107,6 @@ class ButtonFrame:
         self._create_widgets()
         self.logger.debug("Komponent ButtonFrame został zainicjalizowany")
 
-    def bind_auth_action(self, command):
-        """Przypisuje akcję do przycisku autentykacji"""
-        self.logger.debug(f"Bindowanie akcji autentykacji: {command}")
-        self.auth_button.configure(command=command)
-
-    def bind_close_action(self, command):
-        """Przypisuje akcję do przycisku zamknięcia"""
-        self.logger.debug(f"Bindowanie akcji zamknięcia: {command}")
-        self.close_button.configure(command=command)
-
-    def set_auth_button_text(self, text: str):
-        """Zmienia tekst na przycisku autentykacji"""
-        self.logger.debug(f"Zmiana tekstu przycisku autentykacji na: {text}")
-        self.auth_button.configure(text=text)
-
     def _create_widgets(self):
         """Tworzy przyciski"""
         self.logger.debug("Tworzenie przycisków")
@@ -129,7 +114,7 @@ class ButtonFrame:
         # Przycisk głównej akcji (szerszy)
         self.auth_button = ttk.Button(
             self.buttons_container,
-            text="Wyślij email weryfikacyjny",
+            text="Wyślij link logowania",
             width=30  # Stała szerokość
         )
         self.auth_button.pack(side=tk.LEFT, padx=(0, 5))
@@ -145,3 +130,13 @@ class ButtonFrame:
         self.logger.debug("Utworzono przycisk zamykania")
 
         self.logger.debug("Przyciski zostały utworzone")
+
+    def bind_auth_action(self, command):
+        """Przypisuje akcję do przycisku autentykacji"""
+        self.logger.debug(f"Bindowanie akcji autentykacji: {command}")
+        self.auth_button.configure(command=command)
+
+    def bind_close_action(self, command):
+        """Przypisuje akcję do przycisku zamknięcia"""
+        self.logger.debug(f"Bindowanie akcji zamknięcia: {command}")
+        self.close_button.configure(command=command)

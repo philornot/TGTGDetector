@@ -157,11 +157,9 @@ class CredentialsWindow:
             instructions_label = ttk.Label(
                 parent,
                 text="Podaj adres email używany w aplikacji Too Good To Go.\n"
-                     "Otrzymasz email z przyciskiem do logowania.\n\n"
-                     "UWAGA: Jeśli przycisk w emailu nie działa:\n"
-                     "1. Znajdź w emailu kod weryfikacyjny (6 cyfr)\n"
-                     "2. Wpisz go w pole poniżej (pojawi się po wpisaniu emaila)\n"
-                     "3. Kliknij 'Zaloguj się'",
+                     "Po kliknięciu przycisku otrzymasz email z linkiem do zalogowania.\n\n"
+                     "UWAGA: Link należy otworzyć na komputerze\n"
+                     "(otwarcie na telefonie nie zadziała jeśli masz zainstalowaną aplikację TGTG).",
                 style='Normal.TLabel',
                 wraplength=350
             )
@@ -262,59 +260,34 @@ class CredentialsWindow:
 
         try:
             email = self.email_frame.get_email()
-            code = self.code_frame.get_code()
 
             self.logger.debug(f"Pobrano email: {email}")
-            self.logger.debug(f"Pobrano kod o długości: {len(code) if code else 0}")
 
             if not email:
                 self.logger.warning("Próba autentykacji bez podania emaila")
                 messagebox.showerror("Błąd", "Podaj adres email!")
                 return
 
-            if not code:
-                # Pierwsze wywołanie — wysyłanie emaila
-                self.logger.info(f"Rozpoczęcie wysyłania emaila dla: {email}")
-                self.status_var.set("Wysyłanie emaila z kodem... Sprawdź swoją skrzynkę!")
+            # Rozpocznij proces logowania
+            self.status_var.set("Wysyłanie emaila z linkiem do logowania...\nSprawdź swoją skrzynkę!")
+            self.logger.info(f"Rozpoczęcie logowania dla: {email}")
 
-                # Pokaż pole na kod
-                self.code_frame.show(after_widget=self.email_frame.frame)
-                self.logger.debug("Pokazano pole na kod weryfikacyjny")
+            try:
+                await self.auth_handler.start_login(email)
+                self.logger.info("Logowanie zakończone sukcesem")
 
-                # Zmień tekst przycisku
-                self.button_frame.set_auth_button_text("Zaloguj się kodem")
-                self.logger.debug("Zmieniono tekst przycisku na 'Zaloguj się kodem'")
+                # Poczekaj chwilę, żeby użytkownik zobaczył komunikat
+                self.status_var.set("Logowanie zakończone sukcesem!")
+                await asyncio.sleep(1)
 
-                try:
-                    # Wysłanie emaila
-                    await self.auth_handler.send_verification_email(email)
-                    self.status_var.set("Email wysłany! Możesz użyć przycisku w emailu lub wpisać kod tutaj.")
-                    self.logger.info("Email został wysłany")
-                except Exception as e:
-                    self.logger.error(f"Błąd podczas wysyłania emaila: {e}")
-                    self.status_var.set(f"Błąd wysyłania emaila: {str(e)}")
-                    messagebox.showerror("Błąd", f"Błąd wysyłania emaila: {str(e)}")
+                # Zamknij okno
+                messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
+                self._on_closing()
 
-            else:
-                # Drugie wywołanie — weryfikacja kodu
-                self.logger.info("Rozpoczęcie weryfikacji kodu...")
-                self.status_var.set("Weryfikacja kodu...")
-
-                try:
-                    # Weryfikacja kodu i zapis credentials
-                    await self.auth_handler.verify_code(email, code)
-                    self.logger.debug("Credentials zostały pomyślnie pobrane i zapisane")
-
-                    self.status_var.set("Logowanie zakończone sukcesem!")
-                    self.logger.info("=== Proces autentykacji zakończony sukcesem ===")
-
-                    # Zamknij okno
-                    messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
-                    self._on_closing()
-                except Exception as e:
-                    self.logger.error(f"Błąd podczas weryfikacji kodu: {e}")
-                    self.status_var.set(f"Błąd weryfikacji kodu: {str(e)}")
-                    messagebox.showerror("Błąd", f"Błąd weryfikacji kodu: {str(e)}")
+            except Exception as e:
+                self.logger.error(f"Błąd podczas procesu logowania: {e}")
+                self.status_var.set(f"Błąd logowania: {str(e)}")
+                messagebox.showerror("Błąd", f"Błąd logowania: {str(e)}")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas procesu autentykacji: {e}", exc_info=True)
