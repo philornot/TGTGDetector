@@ -1,10 +1,12 @@
 import asyncio
-import random  # Dodaj import na górze pliku
+import random
 import signal
+import tkinter as tk
 from datetime import datetime
 
 from src.api import TGTGApiClient
 from src.config import TGTGSettings
+from src.gui import CredentialsWindow
 from src.utils import TGTGLogger
 
 
@@ -17,20 +19,14 @@ class TGTGDetector:
         self.logger = TGTGLogger("TGTG_Detector").get_logger()
         self.logger.info("Inicjalizacja TGTG Detector...")
 
-        # Flaga do kontroli głównej pętli
         self.is_running = True
-
-        # Klient API
         self.api_client = None
-
-        # Wczytanie konfiguracji
         self.settings = TGTGSettings()
-
-        # Konfiguracja obsługi sygnałów
         self._setup_signal_handlers()
-
-        # Status ostatniego sprawdzenia
         self.last_check_time = None
+
+        # Root dla okien Tkinter
+        self.tk_root = None
 
     def _setup_signal_handlers(self):
         """Konfiguracja obsługi sygnałów systemowych"""
@@ -44,15 +40,61 @@ class TGTGDetector:
         self.logger.warning(f"Otrzymano sygnał {signum}. Rozpoczynam bezpieczne zatrzymywanie...")
         self.is_running = False
 
+    async def _show_credentials_window(self):
+        """Pokazuje okno do wprowadzania credentials i czeka na ich wprowadzenie"""
+        if not self.tk_root:
+            self.tk_root = tk.Tk()
+            self.tk_root.withdraw()  # Ukryj główne okno
+
+        credentials_window = CredentialsWindow(self.tk_root)
+
+        # Czekamy na zamknięcie okna
+        while credentials_window.is_active:
+            await asyncio.sleep(0.1)
+
+        # Sprawdź, czy credentials zostały zapisane
+        new_config = self.settings.load_config()
+        if not all([
+            new_config.get('access_token'),
+            new_config.get('refresh_token'),
+            new_config.get('user_id'),
+            new_config.get('cookie')
+        ]):
+            self.logger.critical("Nie wprowadzono wymaganych danych logowania!")
+            raise ValueError("Brak wymaganych danych logowania")
+
+        self.logger.info("Pomyślnie wprowadzono dane logowania")
+        return new_config
+
     async def _initialize_api(self):
         """Inicjalizacja klienta API"""
         if not self.api_client:
             self.api_client = TGTGApiClient()
             config = self.settings.config
-            await self.api_client.login(
-                email=config['email'],
-                access_token=config.get('access_token')
-            )
+
+            # Sprawdź czy mamy wszystkie wymagane dane logowania
+            if not all([
+                config.get('access_token'),
+                config.get('refresh_token'),
+                config.get('user_id'),
+                config.get('cookie')
+            ]):
+                self.logger.warning("Brak wymaganych danych logowania. Otwieram okno konfiguracji...")
+                config = await self._show_credentials_window()
+
+            try:
+                await self.api_client.login(
+                    email=config['email'],
+                    access_token=config.get('access_token')
+                )
+            except Exception as e:
+                self.logger.error(f"Błąd logowania z zapisanymi danymi: {e}")
+                self.logger.info("Próbuję ponownie z nowymi danymi logowania...")
+                config = await self._show_credentials_window()
+                await self.api_client.login(
+                    email=config['email'],
+                    access_token=config.get('access_token')
+                )
 
     async def check_available_items(self):
         """
@@ -74,7 +116,6 @@ class TGTGDetector:
             if all_items:
                 self.logger.info(f"Znaleziono {len(all_items)} dostępnych paczek")
 
-                # Filtrowanie według ceny
                 filtered_items = [
                     item for item in all_items
                     if self.settings.config['min_price'] <= (
@@ -82,7 +123,6 @@ class TGTGDetector:
                     self.settings.config['max_price']
                 ]
 
-                # Wyświetl do 5 losowych paczek dla testów
                 sample_size = min(5, len(filtered_items))
                 sample_items = random.sample(filtered_items, sample_size) if filtered_items else []
 
@@ -117,7 +157,7 @@ class TGTGDetector:
                 break
             except Exception as e:
                 self.logger.error(f"Wystąpił błąd w głównej pętli: {e}")
-                await asyncio.sleep(5)  # Czekaj przed ponowną próbą
+                await asyncio.sleep(5)
 
         self.logger.info("Monitoring zatrzymany")
 
@@ -129,6 +169,8 @@ class TGTGDetector:
         self.is_running = False
         if self.api_client:
             await self.api_client.cleanup()
+        if self.tk_root:
+            self.tk_root.destroy()
 
 
 async def main():

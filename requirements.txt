@@ -1,2 +1,4 @@
 coloredlogs~=15.0.1
 tgtg~=0.17.0
+sv-ttk~=2.5.5
+darkdetect~=0.8.0

@@ -1,20 +1,17 @@
-from tkinter import ttk
+import sys
 import tkinter as tk
+from tkinter import ttk
+
+import darkdetect
+import sv_ttk
+
+from ..utils import TGTGLogger
 
 
 class TGTGStyles:
-    """Style dla aplikacji TGTG Detector"""
+    """Style dla aplikacji TGTG Detector z wykorzystaniem Sun Valley theme"""
 
-    # Kolory
-    COLORS = {
-        'bg_dark': '#2b2b2b',
-        'bg_light': '#3c3f41',
-        'fg': '#ffffff',
-        'accent': '#4CAF50',  # Zielony - nawiązanie do TGTG
-        'error': '#ff5252',
-        'warning': '#ffd740',
-        'success': '#69f0ae'
-    }
+    logger = TGTGLogger("TGTGStyles").get_logger()
 
     # Czcionki
     FONTS = {
@@ -31,80 +28,68 @@ class TGTGStyles:
     }
 
     @classmethod
-    def apply_dark_theme(cls, root: tk.Tk):
-        """Aplikuje ciemny motyw do całej aplikacji"""
-        style = ttk.Style()
+    def apply_theme(cls, root: tk.Tk):
+        """Aplikuje Sun Valley theme w zależności od motywu systemowego"""
+        try:
+            cls.logger.debug("=== Rozpoczęcie aplikowania stylu ===")
+            cls.logger.debug(f"Python version: {sys.version}")
+            cls.logger.debug(f"Tkinter version: {tk.TkVersion}")
 
-        # Konfiguracja głównego okna
-        root.configure(bg=cls.COLORS['bg_dark'])
+            # Wykryj motyw systemowy
+            is_dark = darkdetect.isDark()
+            cls.logger.debug(f"Wykryty motyw systemowy: {'ciemny' if is_dark else 'jasny'}")
 
-        # Style dla TTK widgets
-        style.configure('TFrame', background=cls.COLORS['bg_dark'])
+            # Zastosuj Sun Valley theme
+            theme = "dark" if is_dark else "light"
+            cls.logger.debug(f"Ustawianie motywu Sun Valley: {theme}")
+            sv_ttk.set_theme(theme)
 
-        style.configure('TLabel',
-                        background=cls.COLORS['bg_dark'],
-                        foreground=cls.COLORS['fg'],
-                        font=cls.FONTS['normal'],
-                        padding=cls.PADDING['normal']
-                        )
+            # Podstawowa konfiguracja okna
+            cls.logger.debug("Konfiguracja podstawowych parametrów okna...")
+            root.configure(padx=cls.PADDING['normal'], pady=cls.PADDING['normal'])
 
-        style.configure('Header.TLabel',
-                        font=cls.FONTS['header'],
-                        foreground=cls.COLORS['accent']
-                        )
+            # Dodatkowe style dla widgetów
+            cls.logger.debug("Konfiguracja stylów dla widgetów...")
+            style = ttk.Style()
 
-        style.configure('TButton',
-                        background=cls.COLORS['accent'],
-                        foreground=cls.COLORS['fg'],
-                        font=cls.FONTS['normal'],
-                        padding=cls.PADDING['normal']
-                        )
+            # Styl dla nagłówków
+            cls.logger.debug("Konfiguracja stylu nagłówka...")
+            style.configure(
+                'Header.TLabel',
+                font=cls.FONTS['header'],
+                padding=cls.PADDING['normal']
+            )
 
-        style.map('TButton',
-                  background=[('active', cls.COLORS['accent'])],
-                  foreground=[('active', cls.COLORS['fg'])]
-                  )
+            # Styl dla zwykłego tekstu
+            cls.logger.debug("Konfiguracja stylu normalnego tekstu...")
+            style.configure(
+                'Normal.TLabel',
+                font=cls.FONTS['normal'],
+                padding=cls.PADDING['small']
+            )
 
-        style.configure('TEntry',
-                        fieldbackground=cls.COLORS['bg_light'],
-                        foreground=cls.COLORS['fg'],
-                        padding=cls.PADDING['small']
-                        )
+            # Styl dla statusów
+            cls.logger.debug("Konfiguracja stylu statusu...")
+            style.configure(
+                'Status.TLabel',
+                font=cls.FONTS['small'],
+                padding=cls.PADDING['small']
+            )
 
-        # Status style
-        style.configure('Status.TLabel',
-                        font=cls.FONTS['small'],
-                        foreground=cls.COLORS['fg']
-                        )
+            # Styl dla przycisków
+            cls.logger.debug("Konfiguracja stylu przycisków...")
+            style.configure(
+                'TButton',
+                padding=cls.PADDING['normal']
+            )
 
-        style.configure('Success.TLabel',
-                        foreground=cls.COLORS['success']
-                        )
+            # Wymuszenie aktualizacji stylów
+            cls.logger.debug("Wymuszenie aktualizacji stylów...")
+            root.update()
 
-        style.configure('Error.TLabel',
-                        foreground=cls.COLORS['error']
-                        )
+            cls.logger.info("=== Style zostały pomyślnie zastosowane ===")
 
-        style.configure('Warning.TLabel',
-                        foreground=cls.COLORS['warning']
-                        )
-
-    @staticmethod
-    def create_tooltip(widget, text):
-        """Tworzy tooltip dla widgetu"""
-
-        def show_tooltip(event):
-            tooltip = tk.Toplevel()
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
-
-            label = ttk.Label(tooltip, text=text, background="#ffffe0", relief='solid')
-            label.pack()
-
-            def hide_tooltip():
-                tooltip.destroy()
-
-            widget.tooltip = tooltip
-            widget.bind('<Leave>', lambda e: hide_tooltip())
-
-        widget.bind('<Enter>', show_tooltip)
+        except Exception as e:
+            cls.logger.error(f"!!! Błąd podczas aplikowania stylów: {e}", exc_info=True)
+            cls.logger.error(f"Typ błędu: {type(e).__name__}")
+            raise
