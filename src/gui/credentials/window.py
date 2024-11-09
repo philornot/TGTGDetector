@@ -260,7 +260,6 @@ class CredentialsWindow:
 
         try:
             email = self.email_frame.get_email()
-
             self.logger.debug(f"Pobrano email: {email}")
 
             if not email:
@@ -268,26 +267,30 @@ class CredentialsWindow:
                 messagebox.showerror("Błąd", "Podaj adres email!")
                 return
 
-            # Rozpocznij proces logowania
-            self.status_var.set("Wysyłanie emaila z linkiem do logowania...\nSprawdź swoją skrzynkę!")
-            self.logger.info(f"Rozpoczęcie logowania dla: {email}")
+            # Rozpocznij proces logowania, tylko jeśli jeszcze nie jest w toku
+            if not self.auth_handler.is_auth_in_progress:
+                self.status_var.set("Wysyłanie emaila z linkiem do logowania...\nSprawdź swoją skrzynkę!")
+                self.logger.info(f"Rozpoczęcie logowania dla: {email}")
 
-            try:
-                await self.auth_handler.start_login(email)
-                self.logger.info("Logowanie zakończone sukcesem")
+                try:
+                    await self.auth_handler.start_login(email)
+                    self.logger.info("Logowanie zakończone sukcesem")
 
-                # Poczekaj chwilę, żeby użytkownik zobaczył komunikat
-                self.status_var.set("Logowanie zakończone sukcesem!")
-                await asyncio.sleep(1)
+                    # Poczekaj chwilę, żeby użytkownik zobaczył komunikat
+                    self.status_var.set("Logowanie zakończone sukcesem!")
+                    await asyncio.sleep(1)
 
-                # Zamknij okno
-                messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
-                self._on_closing()
+                    # Zamknij okno
+                    messagebox.showinfo("Sukces", "Logowanie zakończone sukcesem!")
+                    self._on_closing()
 
-            except Exception as e:
-                self.logger.error(f"Błąd podczas procesu logowania: {e}")
-                self.status_var.set(f"Błąd logowania: {str(e)}")
-                messagebox.showerror("Błąd", f"Błąd logowania: {str(e)}")
+                except Exception as e:
+                    self.logger.error(f"Błąd podczas procesu logowania: {e}")
+                    self.status_var.set(f"Błąd logowania: {str(e)}")
+                    messagebox.showerror("Błąd", f"Błąd logowania: {str(e)}")
+            else:
+                self.logger.warning("Proces autentykacji jest już w toku")
+                self.status_var.set("Logowanie w toku...")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas procesu autentykacji: {e}", exc_info=True)

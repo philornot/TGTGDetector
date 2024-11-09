@@ -15,39 +15,96 @@ class TGTGApiClient:
         self.logger = TGTGLogger("TGTG_API").get_logger()
         self.client = None
         self.settings = TGTGSettings()
+        self.is_logged_in = False
 
     async def login(self, email: str, access_token: Optional[str] = None):
         """
-        Logowanie do TGTG
+        Logowanie do TGTG. Wykorzystuje zapisane credentials, jeśli są dostępne,
+        w przeciwnym razie próbuje zalogować się, używając dostarczonego tokenu lub emaila.
         """
         self.logger.info("Rozpoczynam proces logowania...")
 
         try:
-            config = self.settings.config
-
-            # Jeśli już mamy klienta, nie logujemy się ponownie
-            if self.client is not None:
-                self.logger.info("Używam istniejącej sesji")
+            if self.is_logged_in and self.client:
+                self.logger.info("Już zalogowany, pomijam proces logowania")
                 return
 
-            if access_token and config.get('refresh_token') and config.get('user_id') and config.get('cookie'):
-                self.logger.debug("Próba logowania przy użyciu zapisanych credentials...")
+            config = self.settings.config
+            self.logger.debug("Sprawdzam zapisane credentials...")
+
+            # Jeśli dostarczono access_token, użyj go zamiast zapisanych credentials
+            if access_token:
+                self.logger.info("Próba logowania z dostarczonym access_token...")
+                if not all([
+                    config.get('refresh_token'),
+                    config.get('user_id'),
+                    config.get('cookie')
+                ]):
+                    raise ValueError("Brakuje wymaganych danych dla dostarczonego access_token")
+
                 self.client = TgtgClient(
-                    access_token=config['access_token'],
+                    access_token=access_token,
                     refresh_token=config['refresh_token'],
                     user_id=config['user_id'],
                     cookie=config['cookie']
                 )
-                self.logger.info("Zalogowano przy użyciu zapisanych credentials")
-            else:
-                self.logger.debug("Brak zapisanych credentials, inicjalizacja nowego klienta...")
-                self.client = TgtgClient(email=email)
-                credentials = self.client.get_credentials()
-                self.settings.update_credentials(credentials)
-                self.logger.info("Logowanie zakończone sukcesem")
+                try:
+                    # Weryfikacja czy credentials działają
+                    self.client.get_items()
+                    self.is_logged_in = True
+                    self.logger.info("Pomyślnie zalogowano przy użyciu dostarczonego access_token")
+                    return
+                except Exception as e:
+                    self.logger.warning(f"Nie udało się użyć dostarczonego access_token: {e}")
+                    self.is_logged_in = False
+
+            # Sprawdź czy mamy kompletne zapisane credentials
+            has_valid_credentials = all([
+                config.get('access_token'),
+                config.get('refresh_token'),
+                config.get('user_id'),
+                config.get('cookie')
+            ])
+
+            if has_valid_credentials:
+                try:
+                    self.logger.info("Znaleziono zapisane credentials, próba logowania...")
+                    self.client = TgtgClient(
+                        access_token=config['access_token'],
+                        refresh_token=config['refresh_token'],
+                        user_id=config['user_id'],
+                        cookie=config['cookie']
+                    )
+                    # Weryfikacja czy credentials działają
+                    self.client.get_items()
+                    self.is_logged_in = True
+                    self.logger.info("Pomyślnie zalogowano przy użyciu zapisanych credentials")
+                    return
+                except Exception as e:
+                    self.logger.warning(f"Nie udało się użyć zapisanych credentials: {e}")
+                    self.is_logged_in = False
+
+            # Próba logowania przy użyciu emaila
+            if email:
+                self.logger.info(f"Próba logowania za pomocą emaila: {email}")
+                try:
+                    self.client = TgtgClient(email=email)
+                    # TgtgClient automatycznie spróbuje się zalogować przez email
+                    credentials = self.client.get_credentials()
+                    self.settings.update_credentials(credentials)
+                    self.is_logged_in = True
+                    self.logger.info("Pomyślnie zalogowano przy użyciu emaila")
+                    return
+                except Exception as e:
+                    self.logger.error(f"Nie udało się zalogować przy użyciu emaila: {e}")
+                    self.is_logged_in = False
+
+            # Jeśli dotarliśmy tutaj, oznacza to, że nie udało się zalogować żadną metodą
+            raise ValueError("Nie udało się zalogować żadną z dostępnych metod")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas logowania: {e}")
+            self.is_logged_in = False
             raise
 
     async def get_items(self, lat: float, lng: float, radius: int = 5) -> List[Dict[str, Any]]:

@@ -13,20 +13,21 @@ class AuthenticationHandler:
         self.logger = TGTGLogger("AuthHandler").get_logger()
         self.client: Optional[TgtgClient] = None
         self.settings = TGTGSettings()
+        self.is_auth_in_progress = False
 
         self.logger.debug(f"Inicjalizacja AuthenticationHandler. Ścieżka konfig: {self.settings.config_path}")
 
     async def start_login(self, email: str) -> Dict[str, Any]:
         """
         Rozpoczyna proces logowania — wysyła email z przyciskiem i czeka na jego kliknięcie
-
-        Args:
-            email: Adres email użytkownika
-
-        Returns:
-            Dict[str, Any]: Słownik z danymi uwierzytelniającymi
         """
         try:
+            # Zabezpieczenie przed wielokrotnym logowaniem
+            if self.is_auth_in_progress:
+                self.logger.warning("Proces autentykacji jest już w toku")
+                return {}
+
+            self.is_auth_in_progress = True
             self.logger.info(f"Rozpoczęcie procesu logowania dla: {email}")
 
             # Inicjalizacja klienta i wysłanie maila
@@ -46,8 +47,10 @@ class AuthenticationHandler:
             self.settings.save_config(self.settings.config)
             self.logger.info("Credentials zostały pomyślnie zapisane w konfiguracji")
 
+            self.is_auth_in_progress = False
             return credentials
 
         except Exception as e:
             self.logger.error(f"Błąd podczas procesu logowania: {e}")
+            self.is_auth_in_progress = False
             raise
