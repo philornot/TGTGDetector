@@ -5,7 +5,7 @@ from tkinter import ttk
 import darkdetect
 import sv_ttk
 
-from ..utils import TGTGLogger
+from src.utils import TGTGLogger
 
 
 class TGTGStyles:

@@ -1,3 +1,3 @@
-from .settings import TGTGSettings, Location, SettingsWindow
+from .settings import TGTGSettings, Location
 
-__all__ = ['TGTGSettings', 'Location', 'SettingsWindow']
+__all__ = ['TGTGSettings', 'Location']

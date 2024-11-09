@@ -1,12 +1,13 @@
 import asyncio
 import random
 import signal
+import time
 import tkinter as tk
 from datetime import datetime
 
 from src.api import TGTGApiClient
 from src.config import TGTGSettings
-from src.gui import CredentialsWindow
+from src.gui import SettingsWindow, CredentialsWindow, TGTGStyles
 from src.utils import TGTGLogger
 
 
@@ -35,6 +36,16 @@ class TGTGDetector:
         for sig in signals:
             signal.signal(sig, self._signal_handler)
 
+    async def _show_settings_window(self):
+        """Pokazuje okno ustawień"""
+        if not self.tk_root:
+            self.tk_root = tk.Tk()
+            self.tk_root.withdraw()  # Ukryj główne okno
+            TGTGStyles.apply_theme(self.tk_root)  # Aplikuj style do root window
+
+        settings_window = SettingsWindow(self.tk_root)
+        settings_window.run()
+
     def _signal_handler(self, signum, _):
         """Obsługa sygnałów zatrzymania"""
         self.logger.warning(f"Otrzymano sygnał {signum}. Rozpoczynam bezpieczne zatrzymywanie...")
@@ -43,16 +54,46 @@ class TGTGDetector:
     async def _show_credentials_window(self):
         """Pokazuje okno do wprowadzania credentials i czeka na ich wprowadzenie"""
         if not self.tk_root:
+            self.logger.debug("Tworzenie głównego okna Tk...")
             self.tk_root = tk.Tk()
             self.tk_root.withdraw()  # Ukryj główne okno
 
+        self.logger.debug("Tworzenie okna credentials...")
         credentials_window = CredentialsWindow(self.tk_root)
 
-        # Czekamy na zamknięcie okna
-        while credentials_window.is_active:
-            await asyncio.sleep(0.1)
+        # Funkcja do aktualizacji okna w pętli zdarzeń asyncio
+        async def update_window():
+            last_log_time = 0
+            try:
+                while credentials_window.is_active:
+                    current_time = time.time()
+                    # Log tylko co 5 sekund
+                    if current_time - last_log_time >= 5:
+                        self.logger.debug("Okno credentials aktywne...")
+                        last_log_time = current_time
+
+                    credentials_window.root.update()
+                    await asyncio.sleep(0.05)
+            except Exception as e:
+                self.logger.error(f"Błąd podczas aktualizacji okna: {e}")
+                credentials_window.is_active = False
+
+        # Uruchom aktualizację okna w tle
+        update_task = asyncio.create_task(update_window())
+
+        # Czekaj na zakończenie wprowadzania credentials
+        self.logger.debug("Oczekiwanie na wprowadzenie credentials...")
+        await credentials_window.wait_for_completion()
+
+        # Zakończ task aktualizacji okna
+        update_task.cancel()
+        try:
+            await update_task
+        except asyncio.CancelledError:
+            pass
 
         # Sprawdź, czy credentials zostały zapisane
+        self.logger.debug("Sprawdzanie czy credentials zostały zapisane...")
         new_config = self.settings.load_config()
         if not all([
             new_config.get('access_token'),
@@ -72,7 +113,7 @@ class TGTGDetector:
             self.api_client = TGTGApiClient()
             config = self.settings.config
 
-            # Sprawdź czy mamy wszystkie wymagane dane logowania
+            # Sprawdź, czy mamy wszystkie wymagane dane logowania
             if not all([
                 config.get('access_token'),
                 config.get('refresh_token'),
@@ -120,7 +161,7 @@ class TGTGDetector:
                     item for item in all_items
                     if self.settings.config['min_price'] <= (
                             float(item['item']['price_including_taxes']['minor_units']) / 100) <=
-                    self.settings.config['max_price']
+                       self.settings.config['max_price']
                 ]
 
                 sample_size = min(5, len(filtered_items))
