@@ -2,14 +2,14 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
-from ...utils import TGTGLogger
+from ...utils import NiceLogger
 
 
 class EmailFrame:
     """Komponent formularza z polem email"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("EmailFrame").get_logger()
+        self.logger = NiceLogger("EmailFrame").get_logger()
         self.logger.debug("Inicjalizacja komponentu EmailFrame")
 
         self.frame = ttk.Frame(parent)
@@ -44,7 +44,7 @@ class CodeFrame:
     """Komponent formularza z polem do wprowadzenia kodu weryfikacyjnego"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("CodeFrame").get_logger()
+        self.logger = NiceLogger("CodeFrame").get_logger()
         self.logger.debug("Inicjalizacja komponentu CodeFrame")
 
         self.frame = ttk.Frame(parent)
@@ -93,7 +93,7 @@ class ButtonFrame:
     """Komponent z przyciskami akcji"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("ButtonFrame").get_logger()
+        self.logger = NiceLogger("ButtonFrame").get_logger()
         self.logger.debug("Inicjalizacja komponentu ButtonFrame")
 
         # Główny kontener

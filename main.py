@@ -5,7 +5,7 @@ import tkinter as tk
 from src.api import TGTGApiClient
 from src.config import TGTGSettings
 from src.gui import CredentialsWindow, TGTGStyles, MainWindow
-from src.utils import TGTGLogger
+from src.utils import NiceLogger
 
 
 class TGTGDetector:
@@ -14,7 +14,7 @@ class TGTGDetector:
     """
 
     def __init__(self):
-        self.logger = TGTGLogger("TGTG_Detector").get_logger()
+        self.logger = NiceLogger("TGTG_Detector").get_logger()
         self.logger.info("=== Inicjalizacja TGTG Detector ===")
 
         self.is_running = True
@@ -258,7 +258,7 @@ class TGTGDetector:
 
 
 async def main():
-    logger = TGTGLogger("Main").get_logger()
+    logger = NiceLogger("Main").get_logger()
     detector = TGTGDetector()
     try:
         logger.info("=== Uruchamianie głównej funkcji aplikacji ===")

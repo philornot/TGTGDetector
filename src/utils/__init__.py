@@ -1,3 +1,3 @@
-from .logger import TGTGLogger
+from .logger import NiceLogger
 
-__all__ = ['TGTGLogger']
+__all__ = ['NiceLogger']

@@ -1,5 +1,5 @@
-from .utils import TGTGLogger
+from .utils import NiceLogger
 from .config import TGTGSettings
 from .api import TGTGApiClient
 
-__all__ = ['TGTGLogger', 'TGTGSettings', 'TGTGApiClient']
+__all__ = ['NiceLogger', 'TGTGSettings', 'TGTGApiClient']

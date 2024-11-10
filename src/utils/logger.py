@@ -16,7 +16,7 @@ class LogLevel(IntEnum):
     CRITICAL = logging.CRITICAL
 
 
-class TGTGLogger:
+class NiceLogger:
     """
     Klasa zarządzająca logowaniem w aplikacji TGTG Detector
     """
@@ -92,7 +92,7 @@ class TGTGLogger:
 
 # Przykład użycia
 if __name__ == "__main__":
-    logger = TGTGLogger().get_logger()
+    logger = NiceLogger().get_logger()
 
     logger.debug("To jest debug message")
     logger.info("Aplikacja została uruchomiona")

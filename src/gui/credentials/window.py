@@ -6,14 +6,14 @@ from tkinter import ttk, messagebox
 from .auth_handler import AuthenticationHandler
 from .components import EmailFrame, CodeFrame, ButtonFrame
 from ..styles.theme import TGTGStyles
-from ...utils import TGTGLogger
+from ...utils import NiceLogger
 
 
 class CredentialsWindow:
     """Okno do generowania i zarządzania danymi uwierzytelniającymi TGTG"""
 
     def __init__(self, parent=None):
-        self.logger = TGTGLogger("CredentialsWindow").get_logger()
+        self.logger = NiceLogger("CredentialsWindow").get_logger()
         self.logger.info("=== Rozpoczęcie inicjalizacji okna credentials ===")
         self.logger.debug(f"Inicjalizacja z parent: {parent}")
 

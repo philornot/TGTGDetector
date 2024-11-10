@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 
-from src.utils import TGTGLogger
+from src.utils import NiceLogger
 
 
 @dataclass
@@ -95,7 +95,7 @@ class TGTGSettings:
     }
 
     def __init__(self):
-        self.logger = TGTGLogger("TGTGSettings").get_logger()
+        self.logger = NiceLogger("TGTGSettings").get_logger()
         self.logger.info("=== Inicjalizacja menedżera ustawień ===")
 
         # Użyj "Documents" zamiast "Dokumenty"

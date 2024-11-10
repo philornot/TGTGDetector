@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from tgtg import TgtgClient
 
 from ..config import TGTGSettings
-from ..utils import TGTGLogger
+from ..utils import NiceLogger
 
 
 class TGTGApiClient:
@@ -12,7 +12,7 @@ class TGTGApiClient:
     """
 
     def __init__(self):
-        self.logger = TGTGLogger("TGTG_API").get_logger()
+        self.logger = NiceLogger("TGTG_API").get_logger()
         self.client = None
         self.settings = TGTGSettings()
         self.is_logged_in = False

@@ -10,14 +10,14 @@ from typing import Dict, Any, Optional, Tuple, List
 
 import aiohttp
 
-from src.utils import TGTGLogger
+from src.utils import NiceLogger
 
 
 class PackagesList:
     """Komponent wyświetlający listę dostępnych paczek"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("PackagesList").get_logger()
+        self.logger = NiceLogger("PackagesList").get_logger()
         self.logger.info("=== Inicjalizacja komponentu listy paczek ===")
 
         self.frame = ttk.Frame(parent)
@@ -117,7 +117,7 @@ class MapFrame:
     """Komponent wyświetlający mapę z lokalizacją paczek"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("MapFrame").get_logger()
+        self.logger = NiceLogger("MapFrame").get_logger()
         self.logger.info("=== Inicjalizacja komponentu mapy ===")
 
         # Frame główny
@@ -175,7 +175,7 @@ class OptionsFrame:
     """Komponent z opcjami aplikacji"""
 
     def __init__(self, parent: ttk.Frame, settings: dict):
-        self.logger = TGTGLogger("OptionsFrame").get_logger()
+        self.logger = NiceLogger("OptionsFrame").get_logger()
         self.logger.info("=== Inicjalizacja komponentu opcji ===")
 
         self.frame = ttk.LabelFrame(parent, text="Opcje", padding=10)
@@ -235,7 +235,7 @@ class LocationAndFiltersFrame:
     """Komponent zarządzający lokalizacją i filtrami"""
 
     def __init__(self, parent: ttk.Frame):
-        self.logger = TGTGLogger("LocationComponent").get_logger()
+        self.logger = NiceLogger("LocationComponent").get_logger()
         self.logger.info("=== Inicjalizacja komponentu lokalizacji ===")
 
         # Główny kontener na dwie kolumny
@@ -542,7 +542,7 @@ class TGTGSettings:
     }
 
     def __init__(self):
-        self.logger = TGTGLogger("TGTGSettings").get_logger()
+        self.logger = NiceLogger("TGTGSettings").get_logger()
         self.logger.info("=== Inicjalizacja menedżera ustawień ===")
 
         # Użyj "Documents" zamiast "Dokumenty"

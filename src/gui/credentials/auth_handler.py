@@ -3,14 +3,14 @@ from typing import Optional, Dict, Any
 from tgtg import TgtgClient
 
 from ...config import TGTGSettings
-from ...utils import TGTGLogger
+from ...utils import NiceLogger
 
 
 class AuthenticationHandler:
     """Klasa obsługująca proces autentykacji TGTG"""
 
     def __init__(self):
-        self.logger = TGTGLogger("AuthHandler").get_logger()
+        self.logger = NiceLogger("AuthHandler").get_logger()
         self.client: Optional[TgtgClient] = None
         self.settings = TGTGSettings()
         self.is_auth_in_progress = False

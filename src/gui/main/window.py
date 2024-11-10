@@ -7,14 +7,14 @@ from typing import Optional, Dict, Any
 from plyer import notification
 
 from .components import PackagesList, OptionsFrame, LocationAndFiltersFrame
-from ... import TGTGLogger, TGTGSettings, TGTGApiClient
+from ... import NiceLogger, TGTGSettings, TGTGApiClient
 
 
 class MainWindow:
     """Główne okno aplikacji TGTG Monitor"""
 
     def __init__(self, root: Optional[tk.Tk] = None, api_client: Optional[TGTGApiClient] = None):
-        self.logger = TGTGLogger("MainWindow").get_logger()
+        self.logger = NiceLogger("MainWindow").get_logger()
         self.logger.info("=== Rozpoczęcie inicjalizacji głównego okna ===")
         self.logger.debug(f"Otrzymane parametry: root={root}, api_client={api_client}")
 

@@ -5,13 +5,13 @@ from tkinter import ttk
 import darkdetect
 import sv_ttk
 
-from src.utils import TGTGLogger
+from src.utils import NiceLogger
 
 
 class TGTGStyles:
     """Style dla aplikacji TGTG Detector z wykorzystaniem Sun Valley theme"""
 
-    logger = TGTGLogger("TGTGStyles").get_logger()
+    logger = NiceLogger("TGTGStyles").get_logger()
 
     # Czcionki
     FONTS = {
