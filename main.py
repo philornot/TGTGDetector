@@ -1,13 +1,10 @@
 import asyncio
-import random
 import signal
-import time
 import tkinter as tk
-from datetime import datetime
 
 from src.api import TGTGApiClient
 from src.config import TGTGSettings
-from src.gui import SettingsWindow, CredentialsWindow, TGTGStyles
+from src.gui import CredentialsWindow, TGTGStyles, MainWindow
 from src.utils import TGTGLogger
 
 
@@ -18,211 +15,218 @@ class TGTGDetector:
 
     def __init__(self):
         self.logger = TGTGLogger("TGTG_Detector").get_logger()
-        self.logger.info("Inicjalizacja TGTG Detector...")
+        self.logger.info("=== Inicjalizacja TGTG Detector ===")
 
         self.is_running = True
         self.api_client = None
         self.settings = TGTGSettings()
-        self._setup_signal_handlers()
+        self.root = None
+        self.main_window = None
         self.last_check_time = None
 
-        # Root dla okien Tkinter
-        self.tk_root = None
+        self.logger.debug("Konfiguracja obsługi sygnałów...")
+        self._setup_signal_handlers()
+        self.logger.debug("Inicjalizacja zakończona")
 
     def _setup_signal_handlers(self):
         """Konfiguracja obsługi sygnałów systemowych"""
-        self.logger.debug("Konfiguracja obsługi sygnałów systemowych...")
-        signals = (signal.SIGTERM, signal.SIGINT)
-        for sig in signals:
-            signal.signal(sig, self._signal_handler)
+        self.logger.debug("=== Konfiguracja sygnałów systemowych ===")
+        try:
+            signals = (signal.SIGTERM, signal.SIGINT)
+            for sig in signals:
+                signal.signal(sig, self._signal_handler)
+                self.logger.debug(f"Zarejestrowano handler dla sygnału {sig}")
+        except Exception as e:
+            self.logger.error(f"Błąd podczas konfiguracji sygnałów: {e}", exc_info=True)
 
-    async def _show_settings_window(self):
-        """Pokazuje okno ustawień"""
-        if not self.tk_root:
-            self.tk_root = tk.Tk()
-            self.tk_root.withdraw()  # Ukryj główne okno
-            TGTGStyles.apply_theme(self.tk_root)  # Aplikuj style do root window
+    def _has_valid_credentials(self) -> bool:
+        """Sprawdza, czy są zapisane poprawne dane logowania"""
+        self.logger.debug("Sprawdzanie zapisanych credentials...")
+        config = self.settings.config
+        has_credentials = all([
+            config.get('access_token'),
+            config.get('refresh_token'),
+            config.get('user_id'),
+            config.get('cookie')
+        ])
+        self.logger.debug(f"Wynik sprawdzenia credentials: {has_credentials}")
+        return has_credentials
 
-        settings_window = SettingsWindow(self.tk_root)
-        settings_window.run()
+    def _create_root_window(self):
+        """Tworzy główne okno aplikacji"""
+        self.logger.debug("=== Tworzenie głównego okna aplikacji ===")
+
+        try:
+            if not self.root:
+                self.root = tk.Tk()
+                self.logger.debug("Utworzono nowy obiekt Tk")
+
+                # Konfiguracja głównego okna
+                self.root.withdraw()  # Ukryj na start
+                self.root.title("TGTG Monitor")
+
+                # Zastosuj style
+                TGTGStyles.apply_theme(self.root)
+                self.logger.debug("Zastosowano style")
+
+                self.logger.debug("Główne okno zostało utworzone")
+            else:
+                self.logger.debug("Główne okno już istnieje")
+
+        except Exception as e:
+            self.logger.error(f"Błąd podczas tworzenia głównego okna: {e}", exc_info=True)
+            raise
+
+    async def _show_credentials_window(self):
+        """Pokazuje okno logowania i czeka na wprowadzenie danych"""
+        self.logger.info("=== Pokazywanie okna logowania ===")
+
+        try:
+            self._create_root_window()
+
+            self.logger.debug("Tworzenie okna credentials...")
+            credentials_window = CredentialsWindow(self.root)
+
+            async def update_window():
+                while credentials_window.is_active:
+                    try:
+                        credentials_window.update()
+                        await asyncio.sleep(0.05)
+                    except Exception as ex:
+                        self.logger.error(f"Błąd podczas aktualizacji okna credentials: {ex}")
+                        break
+
+            self.logger.debug("Uruchamianie pętli aktualizacji okna...")
+            update_task = asyncio.create_task(update_window())
+
+            await credentials_window.wait_for_completion()
+            self.logger.debug("Okno credentials zakończyło pracę")
+
+            update_task.cancel()
+            try:
+                await update_task
+            except asyncio.CancelledError:
+                self.logger.debug("Task aktualizacji okna został anulowany")
+
+            if not self._has_valid_credentials():
+                self.logger.critical("Nie wprowadzono wymaganych danych logowania!")
+                raise ValueError("Brak wymaganych danych logowania")
+
+        except Exception as e:
+            self.logger.error(f"Błąd w oknie credentials: {e}", exc_info=True)
+            raise
+
+    def _show_main_window(self):
+        """Pokazuje główne okno aplikacji"""
+        self.logger.info("=== Uruchamianie głównego okna aplikacji ===")
+
+        try:
+            self.logger.debug("Inicjalizacja głównego okna...")
+            self.main_window = MainWindow(self.root, self.api_client)
+
+            self.logger.debug("Uruchamianie głównego okna...")
+            self.main_window.run()
+
+            self.logger.info("Główne okno zostało pomyślnie uruchomione")
+
+        except Exception as e:
+            self.logger.error(f"Błąd podczas pokazywania głównego okna: {e}", exc_info=True)
+            raise
 
     def _signal_handler(self, signum, _):
         """Obsługa sygnałów zatrzymania"""
         self.logger.warning(f"Otrzymano sygnał {signum}. Rozpoczynam bezpieczne zatrzymywanie...")
         self.is_running = False
+        if self.root:
+            self.root.quit()
 
-    async def _show_credentials_window(self):
-        """Pokazuje okno do wprowadzania credentials i czeka na ich wprowadzenie"""
-        if not self.tk_root:
-            self.logger.debug("Tworzenie głównego okna Tk...")
-            self.tk_root = tk.Tk()
-            self.tk_root.withdraw()  # Ukryj główne okno
+    async def start(self):
+        """Główna metoda startująca aplikację"""
+        self.logger.info("=== Uruchamianie aplikacji TGTG Monitor ===")
 
-        self.logger.debug("Tworzenie okna credentials...")
-        credentials_window = CredentialsWindow(self.tk_root)
-
-        # Funkcja do aktualizacji okna w pętli zdarzeń asyncio
-        async def update_window():
-            last_log_time = 0
-            try:
-                while credentials_window.is_active:
-                    current_time = time.time()
-                    # Log tylko co 5 sekund
-                    if current_time - last_log_time >= 5:
-                        self.logger.debug("Okno credentials aktywne...")
-                        last_log_time = current_time
-
-                    credentials_window.root.update()
-                    await asyncio.sleep(0.05)
-            except Exception as e:
-                self.logger.error(f"Błąd podczas aktualizacji okna: {e}")
-                credentials_window.is_active = False
-
-        # Uruchom aktualizację okna w tle
-        update_task = asyncio.create_task(update_window())
-
-        # Czekaj na zakończenie wprowadzania credentials
-        self.logger.debug("Oczekiwanie na wprowadzenie credentials...")
-        await credentials_window.wait_for_completion()
-
-        # Zakończ task aktualizacji okna
-        update_task.cancel()
         try:
-            await update_task
-        except asyncio.CancelledError:
-            pass
+            # Inicjalizacja głównego okna
+            self._create_root_window()
 
-        # Sprawdź, czy credentials zostały zapisane
-        self.logger.debug("Sprawdzanie czy credentials zostały zapisane...")
-        new_config = self.settings.load_config()
-        if not all([
-            new_config.get('access_token'),
-            new_config.get('refresh_token'),
-            new_config.get('user_id'),
-            new_config.get('cookie')
-        ]):
-            self.logger.critical("Nie wprowadzono wymaganych danych logowania!")
-            raise ValueError("Brak wymaganych danych logowania")
+            # Sprawdź dane logowania
+            if not self._has_valid_credentials():
+                self.logger.warning("Brak wymaganych danych logowania. Otwieram okno logowania...")
+                await self._show_credentials_window()
 
-        self.logger.info("Pomyślnie wprowadzono dane logowania")
-        return new_config
-
-    async def _initialize_api(self):
-        """Inicjalizacja klienta API"""
-        if not self.api_client:
+            # Inicjalizacja API
+            self.logger.debug("Inicjalizacja API...")
             self.api_client = TGTGApiClient()
-            config = self.settings.config
-
-            # Sprawdź, czy mamy wszystkie wymagane dane logowania
-            if not all([
-                config.get('access_token'),
-                config.get('refresh_token'),
-                config.get('user_id'),
-                config.get('cookie')
-            ]):
-                self.logger.warning("Brak wymaganych danych logowania. Otwieram okno konfiguracji...")
-                config = await self._show_credentials_window()
 
             try:
+                self.logger.debug("Próba logowania z zapisanymi danymi...")
                 await self.api_client.login(
-                    email=config['email'],
-                    access_token=config.get('access_token')
+                    email=self.settings.config['email'],
+                    access_token=self.settings.config.get('access_token')
                 )
             except Exception as e:
                 self.logger.error(f"Błąd logowania z zapisanymi danymi: {e}")
                 self.logger.info("Próbuję ponownie z nowymi danymi logowania...")
-                config = await self._show_credentials_window()
+                await self._show_credentials_window()
                 await self.api_client.login(
-                    email=config['email'],
-                    access_token=config.get('access_token')
+                    email=self.settings.config['email'],
+                    access_token=self.settings.config.get('access_token')
                 )
 
-    async def check_available_items(self):
-        """
-        Sprawdza dostępne paczki
-        """
-        try:
-            self.logger.debug("Rozpoczynam sprawdzanie dostępnych paczek...")
-            await self._initialize_api()
-
-            all_items = []
-            for location in self.settings.config['locations']:
-                items = await self.api_client.get_items(
-                    lat=location['lat'],
-                    lng=location['lng'],
-                    radius=location.get('radius', 5)
-                )
-                all_items.extend(items)
-
-            if all_items:
-                self.logger.info(f"Znaleziono {len(all_items)} dostępnych paczek")
-
-                filtered_items = [
-                    item for item in all_items
-                    if self.settings.config['min_price'] <= (
-                            float(item['item']['price_including_taxes']['minor_units']) / 100) <=
-                       self.settings.config['max_price']
-                ]
-
-                sample_size = min(5, len(filtered_items))
-                sample_items = random.sample(filtered_items, sample_size) if filtered_items else []
-
-                self.logger.info("=== Przykładowe dostępne paczki ===")
-                for item in sample_items:
-                    self.logger.info("\n" + self.api_client.format_item_info(item))
-                self.logger.info("================================")
+            # Pokaż główne okno
+            if self.api_client and self.api_client.is_logged_in:
+                self.logger.info("Poprawnie zalogowano, pokazuję główne okno...")
+                self._show_main_window()
             else:
-                self.logger.info("Brak dostępnych paczek w wybranych lokalizacjach")
+                raise Exception("Nie udało się zalogować")
 
-            self.last_check_time = datetime.now()
-
+        except asyncio.CancelledError:
+            self.logger.warning("Otrzymano żądanie anulowania...")
         except Exception as e:
-            self.logger.error(f"Błąd podczas sprawdzania paczek: {e}")
-
-    async def start(self):
-        """
-        Główna metoda startująca monitoring
-        """
-        self.logger.info("Rozpoczynam monitoring TGTG...")
-        while self.is_running:
-            try:
-                await self.check_available_items()
-
-                if self.last_check_time:
-                    self.logger.debug(f"Ostatnie sprawdzenie: {self.last_check_time.strftime('%H:%M:%S')}")
-
-                await asyncio.sleep(self.settings.config['refresh_interval'])
-
-            except asyncio.CancelledError:
-                self.logger.warning("Otrzymano żądanie anulowania...")
-                break
-            except Exception as e:
-                self.logger.error(f"Wystąpił błąd w głównej pętli: {e}")
-                await asyncio.sleep(5)
-
-        self.logger.info("Monitoring zatrzymany")
+            self.logger.error(f"Wystąpił błąd w głównej pętli: {e}", exc_info=True)
+            raise
+        finally:
+            await self.stop()
 
     async def stop(self):
-        """
-        Bezpieczne zatrzymanie detektora
-        """
-        self.logger.info("Otrzymano żądanie zatrzymania...")
-        self.is_running = False
-        if self.api_client:
-            await self.api_client.cleanup()
-        if self.tk_root:
-            self.tk_root.destroy()
+        """Bezpieczne zatrzymanie aplikacji"""
+        self.logger.info("=== Zatrzymywanie aplikacji ===")
+
+        try:
+            self.is_running = False
+            self.logger.debug("Flaga is_running ustawiona na False")
+
+            if self.api_client:
+                self.logger.debug("Czyszczenie API client...")
+                await self.api_client.cleanup()
+
+            if self.root:
+                self.logger.debug("Zamykanie głównego okna...")
+                try:
+                    self.root.quit()
+                    self.root.destroy()
+                except Exception as e:
+                    self.logger.error(f"Błąd podczas zamykania okna: {e}")
+
+            self.logger.info("Aplikacja została pomyślnie zatrzymana")
+
+        except Exception as e:
+            self.logger.error(f"Błąd podczas zatrzymywania aplikacji: {e}", exc_info=True)
 
 
 async def main():
+    logger = TGTGLogger("Main").get_logger()
     detector = TGTGDetector()
     try:
+        logger.info("=== Uruchamianie głównej funkcji aplikacji ===")
         await detector.start()
     except KeyboardInterrupt:
+        logger.warning("Otrzymano KeyboardInterrupt")
         await detector.stop()
     except Exception as e:
-        detector.logger.critical(f"Krytyczny błąd programu: {e}")
+        logger.critical(f"Krytyczny błąd programu: {e}", exc_info=True)
         raise
+    finally:
+        logger.info("=== Zakończenie działania aplikacji ===")
 
 
 if __name__ == "__main__":

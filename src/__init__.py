@@ -1,13 +1,5 @@
-from .api import TGTGApiClient
-from .config import TGTGSettings
-from .gui import CredentialsWindow, SettingsWindow, TGTGStyles
 from .utils import TGTGLogger
+from .config import TGTGSettings
+from .api import TGTGApiClient
 
-__all__ = [
-    'TGTGApiClient',
-    'TGTGSettings',
-    'CredentialsWindow',
-    'SettingsWindow',
-    'TGTGStyles',
-    'TGTGLogger'
-]
+__all__ = ['TGTGLogger', 'TGTGSettings', 'TGTGApiClient']

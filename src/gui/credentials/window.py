@@ -307,7 +307,6 @@ class CredentialsWindow:
         """Aktualizuje okno"""
         try:
             self.root.update()
-            self.logger.debug("Wykonano update() okna")
         except Exception as e:
             self.logger.error(f"Błąd podczas aktualizacji okna: {e}", exc_info=True)
             raise
