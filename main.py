@@ -226,6 +226,36 @@ class TGTGDetector:
         except Exception as e:
             self.logger.error(f"Błąd podczas zatrzymywania aplikacji: {e}", exc_info=True)
 
+    def run(self):
+        """Uruchamia główne okno"""
+        self.logger.info("=== Uruchamianie głównego okna ===")
+        try:
+            if not self.root.winfo_ismapped():
+                self.logger.debug("Okno nie jest widoczne, pokazuję...")
+                self.root.deiconify()
+
+            self.logger.debug("Uruchamiam główną pętlę...")
+
+            # Utworzenie i ustawienie pętli zdarzeń
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            def update():
+                if self.is_running:
+                    try:
+                        loop.run_until_complete(asyncio.sleep(0.1))
+                        self.root.after(100, update)
+                    except Exception as e:
+                        self.logger.error(f"Błąd w pętli update: {e}")
+
+            update()
+            self.root.mainloop()
+            self.logger.info("Główna pętla okna zakończona")
+
+        except Exception as e:
+            self.logger.error(f"Błąd podczas uruchamiania głównego okna: {e}", exc_info=True)
+            raise
+
 
 async def main():
     logger = TGTGLogger("Main").get_logger()

@@ -33,6 +33,12 @@ class MainWindow:
             self.last_check_time = None
             self.is_running = True
             self.selected_package = None
+
+            # Inicjalizacja event loop i kolejki async
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.async_queue = asyncio.Queue()
+
             self.logger.debug(f"Stan aplikacji zainicjalizowany: is_running={self.is_running}")
 
             # GUI
@@ -43,15 +49,13 @@ class MainWindow:
 
             # Uruchom monitoring
             self.logger.debug("Uruchamianie monitoringu w tle...")
-            asyncio.create_task(self._start_monitoring())
+            self._schedule_package_check()
             self.logger.debug("Task monitoringu utworzony")
 
             self.logger.info("=== Inicjalizacja głównego okna zakończona ===")
 
         except Exception as e:
             self.logger.critical(f"!!! Krytyczny błąd podczas inicjalizacji okna: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
-            self.logger.error(f"Szczegóły błędu: {str(e)}")
             raise
 
     def _configure_window(self):
@@ -83,7 +87,6 @@ class MainWindow:
 
         except Exception as e:
             self.logger.error(f"Błąd podczas konfiguracji okna: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
             raise
 
     def _initialize_ui(self):
@@ -95,7 +98,7 @@ class MainWindow:
             self.logger.debug("Inicjalizacja komponentu lokalizacji i filtrów...")
             left_container = ttk.Frame(self.root)
             left_container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            self.location_filters = LocationAndFiltersFrame(left_container)
+            self.location_filters = LocationAndFiltersFrame(left_container, self)
             self.logger.debug("Komponent lokalizacji i filtrów zainicjalizowany")
 
             # Prawa strona — lista paczek
@@ -119,6 +122,7 @@ class MainWindow:
             self.logger.debug("Bindowanie akcji komponentów...")
             self.packages_list.bind_select(self._on_package_select)
             self.options_frame.bind_save(self._save_settings)
+            self.root.bind('<<LocationUpdated>>', self._on_location_updated)
             self.logger.debug("Akcje zostały zbindowane")
 
             self.logger.debug("=== Inicjalizacja UI zakończona pomyślnie ===")
@@ -134,7 +138,6 @@ class MainWindow:
         try:
             # Wymuszenie przetworzenia oczekujących zdarzeń
             self.root.update_idletasks()
-            self.logger.debug("Wykonano update_idletasks()")
 
             # Pobierz wymiary
             screen_width = self.root.winfo_screenwidth()
@@ -142,23 +145,60 @@ class MainWindow:
             window_width = self.root.winfo_width()
             window_height = self.root.winfo_height()
 
-            self.logger.debug(f"Wymiary ekranu: {screen_width}x{screen_height}")
-            self.logger.debug(f"Wymiary okna: {window_width}x{window_height}")
-
             # Oblicz pozycję
             x = (screen_width // 2) - (window_width // 2)
             y = (screen_height // 2) - (window_height // 2)
 
-            self.logger.debug(f"Obliczona pozycja: x={x}, y={y}")
-
             # Ustaw pozycję
             self.root.geometry(f'{window_width}x{window_height}+{x}+{y}')
-            self.logger.debug(f"Ustawiono geometrię: {window_width}x{window_height}+{x}+{y}")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas centrowania okna: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
             raise
+
+    def _process_async_queue(self):
+        """Przetwarza zadania asynchroniczne w kolejce"""
+        try:
+            while True:
+                try:
+                    coro = self.async_queue.get_nowait()
+                    future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+                    future.add_done_callback(self._handle_async_result)
+                except asyncio.QueueEmpty:
+                    break
+                except Exception as e:
+                    self.logger.error(f"Błąd przetwarzania kolejki async: {e}")
+
+            if self.is_running:
+                self.root.after(100, self._process_async_queue)
+
+        except Exception as e:
+            self.logger.error(f"Błąd w _process_async_queue: {e}")
+            if self.is_running:
+                self.root.after(100, self._process_async_queue)
+
+    def _handle_async_result(self, future):
+        """Obsługuje wyniki zadań asynchronicznych"""
+        try:
+            result = future.result()
+            if result is not None:
+                self.logger.debug(f"Zadanie asynchroniczne zakończone z wynikiem: {result}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.error(f"Błąd w zadaniu asynchronicznym: {e}")
+
+    def _schedule_package_check(self):
+        """Planuje sprawdzanie paczek"""
+        if self.is_running:
+            self.async_queue.put_nowait(self._check_packages())
+            interval = self.options_frame.get_values().get('refresh_interval', 30)
+            self.root.after(interval * 1000, self._schedule_package_check)
+
+    def _on_location_updated(self, _):
+        """Obsługa zmiany lokalizacji"""
+        self.logger.info("Lokalizacja została zaktualizowana, odświeżam listę paczek...")
+        self.async_queue.put_nowait(self._check_packages())
 
     def _on_package_select(self, _):
         """Obsługa wyboru paczki z listy"""
@@ -168,22 +208,12 @@ class MainWindow:
             selection = self.packages_list.treeview.selection()
             if selection:
                 item_id = selection[0]
-                self.logger.debug(f"Wybrano element o id: {item_id}")
-
-                package = next(
+                self.selected_package = next(
                     (p for p in self.packages if str(id(p)) == item_id),
                     None
                 )
-
-                if package:
-                    store_name = package.get('store', {}).get('store_name', 'Nieznany')
-                    self.logger.debug(f"Znaleziono paczkę: {store_name}")
-                    self.selected_package = package
-                else:
-                    self.logger.warning(f"Nie znaleziono paczki dla id: {item_id}")
-
         except Exception as e:
-            self.logger.error(f"Błąd podczas obsługi wyboru paczki: {e}", exc_info=True)
+            self.logger.error(f"Błąd podczas obsługi wyboru paczki: {e}")
 
     def _save_settings(self):
         """Zapisuje ustawienia"""
@@ -194,19 +224,14 @@ class MainWindow:
             options_values = self.options_frame.get_values()
             filter_values = self.location_filters.get_filters()
 
-            self.logger.debug(f"Pobrane wartości z formularza opcji: {options_values}")
-            self.logger.debug(f"Pobrane wartości z formularza filtrów: {filter_values}")
-
             # Połącz wartości
             values = {**options_values, **filter_values}
 
             # Aktualizuj konfigurację
             self.settings.config.update(values)
-            self.logger.debug("Zaktualizowano konfigurację w pamięci")
 
             # Zapisz do pliku
             self.settings.save_config(self.settings.config)
-            self.logger.debug("Zapisano konfigurację do pliku")
 
             messagebox.showinfo("Sukces", "Ustawienia zostały zapisane")
             self.logger.info("Ustawienia zostały pomyślnie zapisane")
@@ -215,13 +240,11 @@ class MainWindow:
             self.logger.error(f"Błąd walidacji wartości: {e}")
             messagebox.showerror("Błąd", f"Nieprawidłowe wartości: {str(e)}")
         except Exception as e:
-            self.logger.error(f"Błąd podczas zapisywania ustawień: {e}", exc_info=True)
+            self.logger.error(f"Błąd podczas zapisywania ustawień: {e}")
             messagebox.showerror("Błąd", f"Wystąpił błąd: {str(e)}")
 
     def _send_notification(self, package: Dict[str, Any]):
         """Wysyła powiadomienie o nowej paczce"""
-        self.logger.debug("=== Wysyłanie powiadomienia ===")
-
         try:
             store = package.get('store', {})
             price = package.get('item', {}).get('price_including_taxes', {})
@@ -237,10 +260,8 @@ class MainWindow:
                 timeout=10
             )
 
-            self.logger.debug("Powiadomienie zostało wysłane")
-
         except Exception as e:
-            self.logger.error(f"Błąd podczas wysyłania powiadomienia: {e}", exc_info=True)
+            self.logger.error(f"Błąd podczas wysyłania powiadomienia: {e}")
 
     async def _check_packages(self):
         """Sprawdza dostępne paczki"""
@@ -255,7 +276,6 @@ class MainWindow:
 
             lat, lon = filters['coordinates']
             radius = filters['radius']
-            self.logger.debug(f"Sprawdzanie lokalizacji: lat={lat}, lng={lon}, radius={radius}")
 
             # Pobierz paczki
             items = await self.api_client.get_items(
@@ -269,45 +289,11 @@ class MainWindow:
             self.location_filters.update_companies(list(companies))
 
             # Zastosuj filtry
-            filtered_items = items
-
-            # Filtr słów kluczowych
-            if filters['keywords']:
-                keywords = filters['keywords'].lower().split()
-                filtered_items = [
-                    item for item in filtered_items
-                    if any(keyword in item['store']['store_name'].lower() for keyword in keywords)
-                ]
-
-            # Filtr firmy
-            if filters['company']:
-                filtered_items = [
-                    item for item in filtered_items
-                    if item['store']['store_name'] == filters['company']
-                ]
-
-            # Filtr ceny
-            values = self.options_frame.get_values()
-            min_price = values['min_price']
-            max_price = values['max_price']
-
-            filtered_items = [
-                item for item in filtered_items
-                if min_price <= (float(item['item']['price_including_taxes']['minor_units']) / 100) <= max_price
-            ]
-
-            self.logger.debug(f"Po filtrowaniu zostało {len(filtered_items)} paczek")
+            filtered_items = self._apply_filters(items, filters)
 
             # Sprawdź nowe paczki
             if self.packages:  # Jeśli nie jest to pierwsze sprawdzenie
-                old_ids = {p['item']['item_id'] for p in self.packages}
-
-                # Wyślij powiadomienia o nowych paczkach
-                for package in filtered_items:
-                    if package['item']['item_id'] not in old_ids:
-                        store_name = package['store']['store_name']
-                        self.logger.info(f"Znaleziono nową paczkę: {store_name}")
-                        self._send_notification(package)
+                self._check_new_packages(filtered_items)
 
             # Aktualizuj listę i GUI
             self.packages = filtered_items
@@ -315,36 +301,50 @@ class MainWindow:
 
             # Aktualizuj czas ostatniego sprawdzenia
             self.last_check_time = datetime.now()
-            self.logger.debug(f"Ostatnie sprawdzenie: {self.last_check_time}")
 
         except Exception as e:
-            self.logger.error(f"Błąd podczas sprawdzania paczek: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
+            self.logger.error(f"Błąd podczas sprawdzania paczek: {e}")
 
-    async def _start_monitoring(self):
-        """Rozpoczyna monitoring paczek"""
-        self.logger.info("=== Rozpoczęcie monitoringu paczek ===")
+    def _apply_filters(self, items: list, filters: dict) -> list:
+        """Aplikuje filtry do listy paczek"""
+        filtered_items = items
 
-        while self.is_running:
-            try:
-                self.logger.debug("Rozpoczęcie cyklu sprawdzania...")
-                await self._check_packages()
+        # Filtr słów kluczowych
+        if filters['keywords']:
+            keywords = filters['keywords'].lower().split()
+            filtered_items = [
+                item for item in filtered_items
+                if any(keyword in item['store']['store_name'].lower() for keyword in keywords)
+            ]
 
-                # Pobierz aktualny interwał
-                interval = self.options_frame.get_values()['refresh_interval']
-                self.logger.debug(f"Oczekiwanie {interval} sekund do następnego sprawdzenia...")
+        # Filtr firmy
+        if filters['company']:
+            filtered_items = [
+                item for item in filtered_items
+                if item['store']['store_name'] == filters['company']
+            ]
 
-                await asyncio.sleep(interval)
+        # Filtr ceny
+        values = self.options_frame.get_values()
+        min_price = values['min_price']
+        max_price = values['max_price']
 
-            except asyncio.CancelledError:
-                self.logger.warning("Monitoring został anulowany")
-                break
-            except Exception as e:
-                self.logger.error(f"Błąd w pętli monitoringu: {e}", exc_info=True)
-                self.logger.debug("Krótka przerwa przed ponowną próbą...")
-                await asyncio.sleep(5)  # Krótsze opóźnienie w przypadku błędu
+        filtered_items = [
+            item for item in filtered_items
+            if min_price <= (float(item['item']['price_including_taxes']['minor_units']) / 100) <= max_price
+        ]
 
-        self.logger.info("=== Monitoring został zatrzymany ===")
+        return filtered_items
+
+    def _check_new_packages(self, new_items: list):
+        """Sprawdza i powiadamia o nowych paczkach"""
+        old_ids = {p['item']['item_id'] for p in self.packages}
+
+        for package in new_items:
+            if package['item']['item_id'] not in old_ids:
+                store_name = package['store']['store_name']
+                self.logger.info(f"Znaleziono nową paczkę: {store_name}")
+                self._send_notification(package)
 
     def _on_closing(self):
         """Obsługa zamknięcia okna"""
@@ -352,19 +352,24 @@ class MainWindow:
 
         try:
             self.is_running = False
-            self.logger.debug("Flaga is_running ustawiona na False")
 
             if messagebox.askokcancel("Zamykanie", "Czy na pewno chcesz zamknąć aplikację?"):
-                self.logger.debug("Użytkownik potwierdził zamknięcie")
+                # Anuluj wszystkie oczekujące taski
+                for task in asyncio.all_tasks(self.loop):
+                    task.cancel()
+
+                # Zatrzymaj i zamknij event loop
+                self.loop.stop()
+                self.loop.close()
+
                 self.root.quit()
                 self.logger.info("Aplikacja została zamknięta")
             else:
+                self.is_running = True
                 self.logger.debug("Użytkownik anulował zamknięcie")
-                self.is_running = True  # Przywróć flagę, jeśli użytkownik anulował
 
         except Exception as e:
-            self.logger.error(f"Błąd podczas zamykania aplikacji: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
+            self.logger.error(f"Błąd podczas zamykania aplikacji: {e}")
 
     def run(self):
         """Uruchamia główne okno"""
@@ -374,11 +379,14 @@ class MainWindow:
                 self.logger.debug("Okno nie jest widoczne, pokazuję...")
                 self.root.deiconify()
 
+            # Uruchom przetwarzanie kolejki async
+            self._process_async_queue()
+
             self.logger.debug("Uruchamiam główną pętlę...")
             self.root.mainloop()
+
             self.logger.info("Główna pętla okna zakończona")
 
         except Exception as e:
-            self.logger.error(f"Błąd podczas uruchamiania głównego okna: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
+            self.logger.error(f"Błąd podczas uruchamiania głównego okna: {e}")
             raise

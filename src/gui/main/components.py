@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ssl
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
@@ -241,6 +242,9 @@ class LocationAndFiltersFrame:
         self.frame = ttk.Frame(parent)
         self.frame.pack(fill=tk.BOTH, expand=True)
 
+        # Zapisz referencję do głównego okna
+        self.root = self.frame.winfo_toplevel()
+
         # Inicjalizacja zmiennych
         self.street_var = tk.StringVar()
         self.city_var = tk.StringVar()
@@ -323,7 +327,30 @@ class LocationAndFiltersFrame:
     def _geocode_callback(self):
         """Callback dla przycisku geokodowania"""
         self.logger.debug("Wywołano callback geokodowania")
-        asyncio.create_task(self._geocode_address())
+
+        # Pobierz aktualną pętlę zdarzeń
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        try:
+            # Utwórz i uruchom task geokodowania
+            task = loop.create_task(self._geocode_address())
+
+            # Dodaj callback do obsługi błędów
+            def handle_task_result(future):
+                try:
+                    future.result()  # To wywoła wyjątek, jeśli wystąpił błąd
+                except Exception as ex:
+                    self.logger.error(f"Błąd w tasku geokodowania: {ex}", exc_info=True)
+
+            task.add_done_callback(handle_task_result)
+
+        except Exception as e:
+            self.logger.error(f"Błąd podczas tworzenia tasku geokodowania: {e}", exc_info=True)
+            self.status_label.config(text=f"Status: Błąd - {str(e)}")
 
     async def _geocode_address(self):
         """Geokoduje wprowadzony adres"""
@@ -331,6 +358,8 @@ class LocationAndFiltersFrame:
 
         street = self.street_var.get().strip()
         city = self.city_var.get().strip()
+
+        self.logger.debug(f"Pobrane dane: ulica='{street}', miasto='{city}'")
 
         if not (street and city):
             self.logger.warning("Brak kompletnego adresu")
@@ -342,39 +371,65 @@ class LocationAndFiltersFrame:
             self.status_label.config(text="Status: Trwa geokodowanie...")
 
             address = f"{street}, {city}, Poland"
-            self.logger.debug(f"Adres do geokodowania: {address}")
+            self.logger.debug(f"Przygotowany adres do geokodowania: {address}")
 
-            async with aiohttp.ClientSession() as session:
-                url = f"https://nominatim.openstreetmap.org/search"
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = True
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                url = "https://nominatim.openstreetmap.org/search"
                 params = {
                     'q': address,
                     'format': 'json',
-                    'limit': 1
+                    'limit': 1,
+                    'countrycodes': 'pl'
                 }
                 headers = {
-                    'User-Agent': 'TGTG_Detector/1.0'
+                    'User-Agent': 'TGTG_Detector/1.0 (https://github.com/philornot/TGTGDetector)'
                 }
+                self.logger.debug(f"Wysyłanie zapytania do: {url}")
 
                 async with session.get(url, params=params, headers=headers) as response:
-                    data = await response.json()
+                    if response.status == 429:
+                        raise Exception("Przekroczono limit zapytań. Spróbuj ponownie za kilka minut.")
 
-                    if data:
+                    if response.status != 200:
+                        error_msg = await response.text()
+                        self.logger.error(f"Błąd serwera {response.status}: {error_msg}")
+                        raise Exception(f"Błąd serwera: {response.status}")
+
+                    data = await response.json()
+                    self.logger.debug(f"Otrzymana odpowiedź: {data}")
+
+                    if not data:
+                        self.status_label.config(text="Status: Nie znaleziono lokalizacji")
+                        return
+
+                    try:
                         lat = float(data[0]['lat'])
                         lon = float(data[0]['lon'])
                         self.current_coords = (lat, lon)
-                        self.logger.info(f"Znaleziono współrzędne: {lat}, {lon}")
+
+                        self.logger.info(f"Znaleziono współrzędne: ({lat}, {lon})")
                         self.status_label.config(
                             text=f"Status: Lokalizacja ustawiona ({lat:.6f}, {lon:.6f})"
                         )
-                    else:
-                        self.logger.warning("Nie znaleziono lokalizacji")
-                        self.status_label.config(text="Status: Nie znaleziono lokalizacji")
-                        self.current_coords = None
 
+                        # Wywołaj event aktualizacji lokalizacji
+                        self.root.event_generate('<<LocationUpdated>>')
+
+                    except (KeyError, ValueError) as e:
+                        self.logger.error(f"Błąd parsowania danych: {e}")
+                        raise Exception("Nieprawidłowy format danych z serwera")
+
+        except aiohttp.ClientError as e:
+            self.status_label.config(text="Status: Błąd połączenia z serwisem geokodowania")
+            self.logger.error(f"Błąd połączenia: {e}")
         except Exception as e:
-            self.logger.error(f"Błąd geokodowania: {e}", exc_info=True)
-            self.status_label.config(text="Status: Błąd geokodowania")
-            self.current_coords = None
+            self.status_label.config(text=f"Status: Błąd - {str(e)}")
+            self.logger.error(f"Błąd geokodowania: {e}")
         finally:
             self.geocode_button.configure(state='normal')
 
