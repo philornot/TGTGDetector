@@ -1,7 +1,6 @@
 coloredlogs~=15.0.1
 tgtg~=0.17.0
 darkdetect~=0.8.0
-tkinterweb~=3.24.7
 plyer~=2.1.0
 utils~=1.0.2
-pillow~=11.0.0
+aiohttp~=3.10.10

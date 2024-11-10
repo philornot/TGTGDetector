@@ -42,15 +42,25 @@ class TGTGDetector:
     def _has_valid_credentials(self) -> bool:
         """Sprawdza, czy są zapisane poprawne dane logowania"""
         self.logger.debug("Sprawdzanie zapisanych credentials...")
+
         config = self.settings.config
-        has_credentials = all([
-            config.get('access_token'),
-            config.get('refresh_token'),
-            config.get('user_id'),
-            config.get('cookie')
-        ])
-        self.logger.debug(f"Wynik sprawdzenia credentials: {has_credentials}")
-        return has_credentials
+        required_fields = ['access_token', 'refresh_token', 'user_id', 'cookie']
+
+        # Sprawdź, czy wszystkie wymagane pola są obecne i niepuste
+        credentials_present = all(
+            bool(config.get(field)) and len(str(config.get(field)).strip()) > 0
+            for field in required_fields
+        )
+
+        self.logger.debug(f"Wymagane pola: {required_fields}")
+        self.logger.debug(f"Status poszczególnych pól:")
+        for field in required_fields:
+            value = config.get(field, '')
+            is_present = bool(value) and len(str(value).strip()) > 0
+            self.logger.debug(f"- {field}: {'✓' if is_present else '✗'}")
+
+        self.logger.debug(f"Wynik sprawdzenia credentials: {credentials_present}")
+        return credentials_present
 
     def _create_root_window(self):
         """Tworzy główne okno aplikacji"""
@@ -107,6 +117,10 @@ class TGTGDetector:
                 await update_task
             except asyncio.CancelledError:
                 self.logger.debug("Task aktualizacji okna został anulowany")
+
+            # Reload konfiguracji po zamknięciu okna credentials
+            self.logger.debug("Przeładowywanie konfiguracji po logowaniu...")
+            self.settings = TGTGSettings()  # To przeładuje konfigurację z pliku
 
             if not self._has_valid_credentials():
                 self.logger.critical("Nie wprowadzono wymaganych danych logowania!")

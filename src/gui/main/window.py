@@ -1,12 +1,12 @@
 import asyncio
+import tkinter as tk
 from datetime import datetime
 from tkinter import ttk, messagebox
-import tkinter as tk
 from typing import Optional, Dict, Any
 
 from plyer import notification
 
-from .components import MapFrame, PackagesList, OptionsFrame
+from .components import PackagesList, OptionsFrame, LocationAndFiltersFrame
 from ... import TGTGLogger, TGTGSettings, TGTGApiClient
 
 
@@ -68,7 +68,7 @@ class MainWindow:
             # Grid configuration
             self.logger.debug("Konfiguracja układu grid...")
             self.root.grid_columnconfigure(1, weight=3)  # Kolumna z listą
-            self.root.grid_rowconfigure(0, weight=1)  # Wiersz z mapą i listą
+            self.root.grid_rowconfigure(0, weight=1)  # Wiersz z lokalizacją i listą
             self.logger.debug("Skonfigurowano układ grid")
 
             # Protokół zamknięcia
@@ -91,12 +91,12 @@ class MainWindow:
         self.logger.debug("=== Inicjalizacja komponentów UI ===")
 
         try:
-            # Lewa strona - mapa
-            self.logger.debug("Inicjalizacja komponentu mapy...")
-            map_container = ttk.Frame(self.root)
-            map_container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            self.map_frame = MapFrame(map_container)
-            self.logger.debug("Komponent mapy zainicjalizowany")
+            # Lewa strona — lokalizacja i filtry
+            self.logger.debug("Inicjalizacja komponentu lokalizacji i filtrów...")
+            left_container = ttk.Frame(self.root)
+            left_container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+            self.location_filters = LocationAndFiltersFrame(left_container)
+            self.logger.debug("Komponent lokalizacji i filtrów zainicjalizowany")
 
             # Prawa strona — lista paczek
             self.logger.debug("Inicjalizacja komponentu listy paczek...")
@@ -109,7 +109,10 @@ class MainWindow:
             self.logger.debug("Inicjalizacja komponentu opcji...")
             options_container = ttk.Frame(self.root)
             options_container.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-            self.options_frame = OptionsFrame(options_container, settings=self.settings.config)
+            self.options_frame = OptionsFrame(
+                options_container,
+                settings=self.settings.config
+            )
             self.logger.debug("Komponent opcji zainicjalizowany")
 
             # Bindowanie akcji
@@ -122,7 +125,6 @@ class MainWindow:
 
         except Exception as e:
             self.logger.error(f"Błąd podczas inicjalizacji UI: {e}", exc_info=True)
-            self.logger.error(f"Typ błędu: {type(e).__name__}")
             raise
 
     def _center_window(self):
@@ -177,43 +179,26 @@ class MainWindow:
                     store_name = package.get('store', {}).get('store_name', 'Nieznany')
                     self.logger.debug(f"Znaleziono paczkę: {store_name}")
                     self.selected_package = package
-                    self._update_map_marker(package)
                 else:
                     self.logger.warning(f"Nie znaleziono paczki dla id: {item_id}")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas obsługi wyboru paczki: {e}", exc_info=True)
 
-    def _update_map_marker(self, package: Dict[str, Any]):
-        """Aktualizacja markera na mapie dla wybranej paczki"""
-        self.logger.debug("=== Aktualizacja markera na mapie ===")
-
-        try:
-            store = package.get('store', {})
-            location = store.get('store_location', {})
-            lat = location.get('latitude')
-            lng = location.get('longitude')
-
-            self.logger.debug(f"Dane lokalizacji: lat={lat}, lng={lng}")
-            self.logger.debug(f"Sklep: {store.get('store_name')}")
-
-            if lat and lng:
-                self.logger.debug(f"Aktualizacja markera dla: {store.get('store_name')}")
-                self.map_frame.load_location(f"{lat},{lng}")
-            else:
-                self.logger.warning("Brak danych lokalizacji dla paczki")
-
-        except Exception as e:
-            self.logger.error(f"Błąd podczas aktualizacji markera: {e}", exc_info=True)
-
     def _save_settings(self):
         """Zapisuje ustawienia"""
         self.logger.info("=== Rozpoczęcie zapisywania ustawień ===")
 
         try:
-            # Pobierz wartości
-            values = self.options_frame.get_values()
-            self.logger.debug(f"Pobrane wartości z formularza: {values}")
+            # Pobierz wartości z obu komponentów
+            options_values = self.options_frame.get_values()
+            filter_values = self.location_filters.get_filters()
+
+            self.logger.debug(f"Pobrane wartości z formularza opcji: {options_values}")
+            self.logger.debug(f"Pobrane wartości z formularza filtrów: {filter_values}")
+
+            # Połącz wartości
+            values = {**options_values, **filter_values}
 
             # Aktualizuj konfigurację
             self.settings.config.update(values)
@@ -262,55 +247,75 @@ class MainWindow:
         self.logger.debug("=== Rozpoczęcie sprawdzania paczek ===")
 
         try:
-            # Pobierz paczki dla wszystkich lokalizacji
-            new_packages = []
-            for location in self.settings.config['locations']:
-                self.logger.debug(f"Sprawdzanie lokalizacji: {location}")
+            # Sprawdź, czy mamy lokalizację
+            filters = self.location_filters.get_filters()
+            if not filters['coordinates']:
+                self.logger.warning("Brak ustawionej lokalizacji!")
+                return
 
-                items = await self.api_client.get_items(
-                    lat=location['lat'],
-                    lng=location['lng'],
-                    radius=location.get('radius', 5)
-                )
-                new_packages.extend(items)
+            lat, lon = filters['coordinates']
+            radius = filters['radius']
+            self.logger.debug(f"Sprawdzanie lokalizacji: lat={lat}, lng={lon}, radius={radius}")
 
-            self.logger.debug(f"Pobrano {len(new_packages)} paczek")
+            # Pobierz paczki
+            items = await self.api_client.get_items(
+                lat=lat,
+                lng=lon,
+                radius=radius
+            )
 
-            # Pobierz aktualne filtry
+            # Aktualizuj listę firm
+            companies = {item['store']['store_name'] for item in items}
+            self.location_filters.update_companies(list(companies))
+
+            # Zastosuj filtry
+            filtered_items = items
+
+            # Filtr słów kluczowych
+            if filters['keywords']:
+                keywords = filters['keywords'].lower().split()
+                filtered_items = [
+                    item for item in filtered_items
+                    if any(keyword in item['store']['store_name'].lower() for keyword in keywords)
+                ]
+
+            # Filtr firmy
+            if filters['company']:
+                filtered_items = [
+                    item for item in filtered_items
+                    if item['store']['store_name'] == filters['company']
+                ]
+
+            # Filtr ceny
             values = self.options_frame.get_values()
             min_price = values['min_price']
             max_price = values['max_price']
 
-            self.logger.debug(f"Filtrowanie paczek (zakres cen: {min_price}-{max_price})")
-
-            # Filtruj paczki
-            filtered_packages = [
-                p for p in new_packages
-                if min_price <= (float(p['item']['price_including_taxes']['minor_units']) / 100) <= max_price
+            filtered_items = [
+                item for item in filtered_items
+                if min_price <= (float(item['item']['price_including_taxes']['minor_units']) / 100) <= max_price
             ]
 
-            self.logger.debug(f"Po filtrowaniu zostało {len(filtered_packages)} paczek")
+            self.logger.debug(f"Po filtrowaniu zostało {len(filtered_items)} paczek")
 
             # Sprawdź nowe paczki
             if self.packages:  # Jeśli nie jest to pierwsze sprawdzenie
                 old_ids = {p['item']['item_id'] for p in self.packages}
 
                 # Wyślij powiadomienia o nowych paczkach
-                for package in filtered_packages:
+                for package in filtered_items:
                     if package['item']['item_id'] not in old_ids:
                         store_name = package['store']['store_name']
                         self.logger.info(f"Znaleziono nową paczkę: {store_name}")
                         self._send_notification(package)
 
             # Aktualizuj listę i GUI
-            self.packages = filtered_packages
-            self.packages_list.update_packages(filtered_packages)
+            self.packages = filtered_items
+            self.packages_list.update_packages(filtered_items)
 
             # Aktualizuj czas ostatniego sprawdzenia
             self.last_check_time = datetime.now()
             self.logger.debug(f"Ostatnie sprawdzenie: {self.last_check_time}")
-
-            self.logger.info(f"Zakończono sprawdzanie - znaleziono {len(filtered_packages)} paczek")
 
         except Exception as e:
             self.logger.error(f"Błąd podczas sprawdzania paczek: {e}", exc_info=True)
